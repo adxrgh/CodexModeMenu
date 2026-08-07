@@ -1,0 +1,6 @@
+# menu-app 构建与安装环境（DeepSeek 构建安装 Agent 使用）
+id = "environment"
+description = "Codex 模式菜单栏工具的构建、安装与验证环境"
+provider = "deepseek"
+model = "deepseek-v4-flash"
+default = true
