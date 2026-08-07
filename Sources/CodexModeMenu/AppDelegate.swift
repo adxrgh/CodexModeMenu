@@ -1,6 +1,13 @@
 import AppKit
 import CodexModeMenuCore
 
+
+/// 历史会话引用：id + 会话原目录（用于 resume 时 cd 到原目录，避免目录选择交互界面）。
+private struct SessionRef {
+    let id: String
+    let cwd: String?
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let refreshInterval: TimeInterval = 2.0
     private static let codexBundleIdentifier = "com.openai.codex"
@@ -147,13 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let session = group.sessions[0]
                 let item = NSMenuItem(title: displayTitle(for: session), action: #selector(resumeSession(_:)), keyEquivalent: "")
                 item.target = self
-                item.representedObject = session.id
+                item.representedObject = SessionRef(id: session.id, cwd: session.cwd)
                 submenu.addItem(item)
             } else {
                 for session in group.sessions {
                     let item = NSMenuItem(title: displayTitle(for: session), action: #selector(resumeSession(_:)), keyEquivalent: "")
                     item.target = self
-                    item.representedObject = session.id
+                    item.representedObject = SessionRef(id: session.id, cwd: session.cwd)
                     submenu.addItem(item)
                 }
             }
@@ -186,10 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func resumeSession(_ sender: NSMenuItem) {
-        guard let sessionID = sender.representedObject as? String, !sessionID.isEmpty else {
+        guard let ref = sender.representedObject as? SessionRef, !ref.id.isEmpty else {
             return
         }
-        openTerminalResume(sessionID: sessionID)
+        openTerminalResume(sessionID: ref.id, cwd: ref.cwd)
     }
 
     @objc private func refreshHistory(_ sender: Any?) {
@@ -197,10 +204,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// 用 Terminal 打开一个真实终端窗口，运行 codex resume <id>。
+    /// 先 cd 到会话原目录（避免 codex resume 的目录选择交互界面），
+    /// 并跳过 hooks 审查界面（hooks 来源已在 config 中声明，属用户自有配置）。
     /// DeepSeek 全量模式下同样可用（resume 读取本地会话，不依赖登录态）。
-    private func openTerminalResume(sessionID: String) {
+    private func openTerminalResume(sessionID: String, cwd: String?) {
         let codexPath = Self.codexBinaryPath
-        let script = "do script \"\(codexPath) resume \(sessionID)\""
+        var command = "\(codexPath) resume --dangerously-bypass-hook-trust \(sessionID)"
+        if let cwd, !cwd.isEmpty {
+            command = "cd \(shellQuote(cwd)) && \(command)"
+        }
+        let script = "do script \"\(command)\""
         let source = "tell application \\\"Terminal\\\"\nactivate\n\(script)\nend tell"
 
         var error: NSDictionary?
@@ -210,6 +223,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let message = error[NSAppleScript.errorMessage] as? String ?? "无法打开终端"
             showAlert(title: "打开终端失败", message: message)
         }
+    }
+
+    /// 对路径做 shell 单引号转义（用于 AppleScript 字符串内嵌的 shell 命令）。
+    private func shellQuote(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - 重启 Codex / 打开外部目标
