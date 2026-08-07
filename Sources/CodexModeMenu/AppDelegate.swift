@@ -204,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// 用 Terminal 打开一个真实终端窗口，运行 codex resume <id>。
+    /// 方式：写一个临时 .command 脚本文件，再用 NSWorkspace 打开——
+    /// Terminal 会直接执行 .command，不需要 AppleScript「自动化」权限
+    /// （独立 app 控制 Terminal 会被 TCC 拦截，这就是之前「打开终端失败」的原因）。
     /// 先 cd 到会话原目录（避免 codex resume 的目录选择交互界面），
     /// 并跳过 hooks 审查界面（hooks 来源已在 config 中声明，属用户自有配置）。
     /// DeepSeek 全量模式下同样可用（resume 读取本地会话，不依赖登录态）。
@@ -213,19 +216,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let cwd, !cwd.isEmpty {
             command = "cd \(shellQuote(cwd)) && \(command)"
         }
-        let script = "do script \"\(command)\""
-        let source = "tell application \\\"Terminal\\\"\nactivate\n\(script)\nend tell"
 
-        var error: NSDictionary?
-        let appleScript = NSAppleScript(source: source)
-        appleScript?.executeAndReturnError(&error)
-        if let error {
-            let message = error[NSAppleScript.errorMessage] as? String ?? "无法打开终端"
-            showAlert(title: "打开终端失败", message: message)
+        // 写临时 .command 脚本（Terminal 打开后自动执行）
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-resume-\(sessionID).command")
+        let scriptBody = "#!/bin/zsh\nexec \(command)\n"
+        do {
+            try scriptBody.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        } catch {
+            showAlert(title: "打开终端失败", message: "无法写入临时脚本: \(error.localizedDescription)")
+            return
+        }
+
+        let didOpen = NSWorkspace.shared.open(scriptURL)
+        if !didOpen {
+            showAlert(title: "打开终端失败", message: "Terminal 无法打开脚本文件")
         }
     }
 
-    /// 对路径做 shell 单引号转义（用于 AppleScript 字符串内嵌的 shell 命令）。
+    /// 对路径做 shell 单引号转义。
     private func shellQuote(_ path: String) -> String {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
