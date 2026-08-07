@@ -13,7 +13,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let codexBundleIdentifier = "com.openai.codex"
     private static let chatGPTAppURL = URL(fileURLWithPath: "/Applications/ChatGPT.app")
     private static let clientModeJSONURL = URL(fileURLWithPath: "/Users/bob/.codex/codex-deepseek-go/client-mode.json")
-    private static let codexBinaryPath = "/Applications/ChatGPT.app/Contents/Resources/codex"
 
     private var statusItem: NSStatusItem?
     private var timer: Timer?
@@ -196,48 +195,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let ref = sender.representedObject as? SessionRef, !ref.id.isEmpty else {
             return
         }
-        openTerminalResume(sessionID: ref.id, cwd: ref.cwd)
+        openInCodexApp(sessionID: ref.id)
     }
 
     @objc private func refreshHistory(_ sender: Any?) {
         refreshHistoryMenu()
     }
 
-    /// 用 Terminal 打开一个真实终端窗口，运行 codex resume <id>。
-    /// 方式：写一个临时 .command 脚本文件，再用 NSWorkspace 打开——
-    /// Terminal 会直接执行 .command，不需要 AppleScript「自动化」权限
-    /// （独立 app 控制 Terminal 会被 TCC 拦截，这就是之前「打开终端失败」的原因）。
-    /// 先 cd 到会话原目录（避免 codex resume 的目录选择交互界面），
-    /// 并跳过 hooks 审查界面（hooks 来源已在 config 中声明，属用户自有配置）。
-    /// DeepSeek 全量模式下同样可用（resume 读取本地会话，不依赖登录态）。
-    private func openTerminalResume(sessionID: String, cwd: String?) {
-        let codexPath = Self.codexBinaryPath
-        var command = "\(codexPath) resume --dangerously-bypass-hook-trust \(sessionID)"
-        if let cwd, !cwd.isEmpty {
-            command = "cd \(shellQuote(cwd)) && \(command)"
-        }
-
-        // 写临时 .command 脚本（Terminal 打开后自动执行）
-        let scriptURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("codex-resume-\(sessionID).command")
-        let scriptBody = "#!/bin/zsh\nexec \(command)\n"
-        do {
-            try scriptBody.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        } catch {
-            showAlert(title: "打开终端失败", message: "无法写入临时脚本: \(error.localizedDescription)")
+    /// 直接在 Codex 桌面应用（ChatGPT.app）内打开/继续本地会话。
+    /// 通过官方 deep link codex://threads/<session-id>：
+    /// App 主进程会把该 URL 解析为本地会话（localConversation 路由），
+    /// 读取本地 rollout 后导航到 /local/<conversationId> 并 resume。
+    /// 该路径读取 ~/.codex/sessions 本地文件，不依赖 ChatGPT 登录 token，
+    /// 因此在 DeepSeek 全量模式下同样可用（2026-08-07 已在 App 日志验证：
+    /// thread/read → thread/resume → maybe_resume_success，routePath=/local/<id>）。
+    private func openInCodexApp(sessionID: String) {
+        guard let url = URL(string: "codex://threads/\(sessionID)") else {
+            showAlert(title: "打开会话失败", message: "无法构造会话链接")
             return
         }
-
-        let didOpen = NSWorkspace.shared.open(scriptURL)
+        let didOpen = NSWorkspace.shared.open(url)
         if !didOpen {
-            showAlert(title: "打开终端失败", message: "Terminal 无法打开脚本文件")
+            showAlert(title: "打开会话失败", message: "Codex 无法打开该会话链接")
         }
-    }
-
-    /// 对路径做 shell 单引号转义。
-    private func shellQuote(_ path: String) -> String {
-        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - 重启 Codex / 打开外部目标
