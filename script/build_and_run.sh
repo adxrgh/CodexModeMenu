@@ -173,7 +173,7 @@ verify() {
   fi
 }
 
-CMD="${1:-}"
+CMD="${1:-run}"
 case "$CMD" in
   run)
     build_app
