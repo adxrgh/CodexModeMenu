@@ -38,6 +38,43 @@ final class GPTCreditFetcherTests: XCTestCase {
         XCTAssertEqual(status.creditsBalance, "0")
         XCTAssertEqual(status.summaryText, "PRO 额度: 已用尽")
         XCTAssertTrue(status.detailText.contains("重置: "))
+        // 倒计时文案：基于 resetAt 与当前时间差，应为 X天X小时 或更细粒度
+        XCTAssertFalse(status.countdownText.isEmpty)
+        XCTAssertTrue(status.countdownText.hasPrefix("重置倒计时:"))
+    }
+
+    func testCountdownText() throws {
+        let now = Date()
+        // 2天3小时后的重置
+        let in2d3h = now.addingTimeInterval(2 * 86400 + 3 * 3600 + 120)
+        let s1 = GPTCreditFetcher.CreditStatus(
+            planType: "pro", usedPercent: 50, remainingPercent: 50,
+            limitReached: false, resetAt: in2d3h, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertEqual(s1.countdownText, "重置倒计时: 2天3小时")
+
+        // 5小时23分后的重置
+        let in5h23m = now.addingTimeInterval(5 * 3600 + 23 * 60 + 30)
+        let s2 = GPTCreditFetcher.CreditStatus(
+            planType: "pro", usedPercent: 50, remainingPercent: 50,
+            limitReached: false, resetAt: in5h23m, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertEqual(s2.countdownText, "重置倒计时: 5小时23分")
+
+        // 12分钟后的重置
+        let in12m = now.addingTimeInterval(12 * 60 + 10)
+        let s3 = GPTCreditFetcher.CreditStatus(
+            planType: "pro", usedPercent: 50, remainingPercent: 50,
+            limitReached: false, resetAt: in12m, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertEqual(s3.countdownText, "重置倒计时: 12分钟")
+
+        // 无重置时间
+        let s4 = GPTCreditFetcher.CreditStatus(
+            planType: "pro", usedPercent: 50, remainingPercent: 50,
+            limitReached: false, resetAt: nil, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertEqual(s4.countdownText, "")
     }
 
     func testParsePartialJSON() {

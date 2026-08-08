@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var creditItem: NSMenuItem?
     private var creditRefreshInFlight = false
     private var lastCreditText = "GPT 额度: 加载中…"
+    /// 最近一次成功获取的额度状态，用于本地动态刷新重置倒计时（不重复请求接口）。
+    private var lastCreditStatus: GPTCreditFetcher.CreditStatus?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -121,6 +123,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateStatusTitle()
         }
         descriptionItem?.title = currentMode.detailDescription
+        // 倒计时是本地时间差，跟随 tick 动态刷新菜单文案（无需重新请求接口）
+        refreshCreditCountdownIfNeeded()
+    }
+
+    /// 有缓存额度时，用当前时间重算重置倒计时并更新菜单项文案。
+    private func refreshCreditCountdownIfNeeded() {
+        guard let status = lastCreditStatus else { return }
+        let title = status.summaryText + " · " + status.countdownText
+        if creditItem?.title != title {
+            creditItem?.title = title
+        }
     }
 
     // MARK: - GPT 额度
@@ -140,8 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.creditRefreshInFlight = false
                 if let status {
+                    self.lastCreditStatus = status
                     self.lastCreditText = status.summaryText
-                    self.creditItem?.title = status.summaryText
+                    self.creditItem?.title = status.summaryText + " · " + status.countdownText
                     // 状态栏标题附上简短额度：Codex•DS ▸ 剩余 X%
                     let suffix = status.remainingPercent >= 100 ? "" : " ▸ 剩余 \(status.remainingPercent)%"
                     if self.lastCreditSuffix != suffix {
@@ -149,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.updateStatusTitle()
                     }
                 } else {
+                    self.lastCreditStatus = nil
                     self.lastCreditText = "GPT 额度: 未获取"
                     self.creditItem?.title = "GPT 额度: 未获取"
                     if !self.lastCreditSuffix.isEmpty {

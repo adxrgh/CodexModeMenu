@@ -27,9 +27,30 @@ public struct GPTCreditFetcher {
             return "\(plan) 额度: 剩余 \(remainingPercent)%"
         }
 
+        /// 距离重置时间的倒计时文案（动态，随当前时间变化）。
+        /// 示例：1天14小时 / 5小时23分 / 12分钟
+        public var countdownText: String {
+            guard let resetAt else { return "" }
+            let seconds = max(0, Int(resetAt.timeIntervalSinceNow))
+            if seconds <= 0 { return "重置倒计时: 即将重置" }
+            let days = seconds / 86400
+            let hours = (seconds % 86400) / 3600
+            let minutes = max(1, (seconds % 3600) / 60)
+            if days > 0 {
+                return "重置倒计时: \(days)天\(hours)小时"
+            } else if hours > 0 {
+                return "重置倒计时: \(hours)小时\(minutes)分"
+            } else {
+                return "重置倒计时: \(minutes)分钟"
+            }
+        }
+
         public var detailText: String {
             let plan = planType?.uppercased() ?? "GPT"
             var parts = ["\(plan) 额度: 已用 \(usedPercent)% / 剩余 \(remainingPercent)%"]
+            if !countdownText.isEmpty {
+                parts.append(countdownText)
+            }
             if let resetAt {
                 parts.append("重置: \(Self.formatDate(resetAt))")
             }
