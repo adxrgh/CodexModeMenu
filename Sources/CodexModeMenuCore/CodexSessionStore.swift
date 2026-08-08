@@ -36,15 +36,12 @@ public struct CodexProjectGroup: Equatable {
 /// - `~/.codex/sessions/**/rollout-*-<id>.jsonl` 首行 `session_meta`：model_provider / cwd
 /// - `~/.codex/.codex-global-state.json`：local-projects / thread-project-assignments
 public enum CodexSessionStore {
-    public static let defaultIndexURL = URL(
-        fileURLWithPath: "/Users/bob/.codex/session_index.jsonl"
-    )
-    public static let defaultSessionsDir = URL(
-        fileURLWithPath: "/Users/bob/.codex/sessions"
-    )
-    public static let defaultGlobalStateURL = URL(
-        fileURLWithPath: "/Users/bob/.codex/.codex-global-state.json"
-    )
+    public static let defaultIndexURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/session_index.jsonl")
+    public static let defaultSessionsDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/sessions")
+    public static let defaultGlobalStateURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/.codex-global-state.json")
 
     public struct ListOptions {
         public var limit: Int

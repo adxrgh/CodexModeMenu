@@ -1,13 +1,12 @@
 import Foundation
 
-/// 解析 /Users/bob/.codex/config.toml 的顶层 model / model_provider。
+/// 解析 ~/.codex/config.toml 的顶层 model / model_provider。
 ///
 /// 规则：只读取第一个 TOML section（以 `[` 开头的行）之前的顶层键值；
 /// section 内出现的同名键一律忽略。
 public enum CodexConfigParser {
-    public static let defaultConfigURL = URL(
-        fileURLWithPath: "/Users/bob/.codex/config.toml"
-    )
+    public static let defaultConfigURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/config.toml")
 
     /// 从文本解析出顶层模式信息。
     public static func parse(text: String) -> CodexMode {

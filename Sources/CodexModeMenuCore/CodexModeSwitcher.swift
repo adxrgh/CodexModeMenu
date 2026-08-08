@@ -2,7 +2,8 @@ import Foundation
 
 /// 调用 switch-client-mode.py 完成模式切换。
 public enum CodexModeSwitcher {
-    public static let scriptPath = "/Users/bob/.codex/codex-deepseek-go/bin/switch-client-mode.py"
+    public static let scriptURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/codex-deepseek-go/bin/switch-client-mode.py")
     public static let pythonPath = "/usr/bin/python3"
 
     public struct SwitchResult {
@@ -30,7 +31,7 @@ public enum CodexModeSwitcher {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pythonPath)
-        process.arguments = [scriptPath, argument]
+        process.arguments = [scriptURL.path, argument]
 
         let outPipe = Pipe()
         let errPipe = Pipe()

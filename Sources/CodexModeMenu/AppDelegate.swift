@@ -10,23 +10,36 @@ private struct SessionRef {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let refreshInterval: TimeInterval = 2.0
+    private static let creditRefreshInterval: TimeInterval = 60.0
     private static let codexBundleIdentifier = "com.openai.codex"
     private static let chatGPTAppURL = URL(fileURLWithPath: "/Applications/ChatGPT.app")
-    private static let clientModeJSONURL = URL(fileURLWithPath: "/Users/bob/.codex/codex-deepseek-go/client-mode.json")
+    private static let clientModeJSONURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/codex-deepseek-go/client-mode.json")
 
     private var statusItem: NSStatusItem?
     private var timer: Timer?
+    private var creditTimer: Timer?
     private var currentMode = CodexConfigParser.parse()
+    /// 当前状态栏基础标题（模式标题，不含额度后缀）
+    private var lastBaseTitle = ""
+    /// 额度后缀（如 " ▸ 剩余 0%"），刷新完成后更新
+    private var lastCreditSuffix = ""
     private var descriptionItem: NSMenuItem?
     private var historyMenu: NSMenu?
+    private var creditItem: NSMenuItem?
+    private var creditRefreshInFlight = false
+    private var lastCreditText = "GPT 额度: 加载中…"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         startTimer()
+        startCreditTimer()
+        refreshGPTCredit()
     }
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        lastBaseTitle = currentMode.title
         item.button?.title = currentMode.title
         statusItem = item
 
@@ -37,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         description.isEnabled = false
         descriptionItem = description
         menu.addItem(description)
+
+        // GPT 额度行：只读显示 ChatGPT 套餐额度（每周用量/重置时间），点击可立即刷新。
+        let credit = NSMenuItem(title: lastCreditText, action: #selector(refreshGPTCredit(_:)), keyEquivalent: "")
+        credit.target = self
+        creditItem = credit
+        menu.addItem(credit)
         menu.addItem(.separator())
 
         menu.addItem(makeItem(title: "切换到 GPT 主控模式", action: #selector(switchToGPT(_:))))
@@ -75,10 +94,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshMode()
     }
 
+    /// 额度独立定时器：避免跟随 2 秒 tick 频繁请求 wham/usage。
+    private func startCreditTimer() {
+        let timer = Timer(timeInterval: Self.creditRefreshInterval, repeats: true) { [weak self] _ in
+            self?.refreshGPTCredit(nil)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.creditTimer = timer
+    }
+
+    /// 统一更新状态栏标题：基础标题（模式）+ 额度后缀。
+    /// 只在标题实际变化时赋值，避免每 tick 重置导致闪烁。
+    private func updateStatusTitle() {
+        let base = lastBaseTitle.isEmpty ? currentMode.title : lastBaseTitle
+        let title = base + lastCreditSuffix
+        if statusItem?.button?.title != title {
+            statusItem?.button?.title = title
+        }
+    }
+
     private func refreshMode() {
         currentMode = CodexConfigParser.parse()
-        statusItem?.button?.title = currentMode.title
+        let newBase = currentMode.title
+        if newBase != lastBaseTitle {
+            lastBaseTitle = newBase
+            updateStatusTitle()
+        }
         descriptionItem?.title = currentMode.detailDescription
+    }
+
+    // MARK: - GPT 额度
+
+    /// 刷新 GPT 额度显示。网络请求放到后台队列，完成后再回主线程更新菜单项。
+    /// showSpinner=true 时（用户点击/启动）先把文案切到“加载中”，否则保留上一次值。
+    @objc private func refreshGPTCredit(_ sender: Any? = nil) {
+        let showSpinner = sender != nil || creditItem?.title.contains("加载中") == true
+        guard !creditRefreshInFlight else { return }
+        creditRefreshInFlight = true
+        if showSpinner {
+            creditItem?.title = "GPT 额度: 加载中…"
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let status = GPTCreditFetcher.fetch()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.creditRefreshInFlight = false
+                if let status {
+                    self.lastCreditText = status.summaryText
+                    self.creditItem?.title = status.summaryText
+                    // 状态栏标题附上简短额度：Codex•DS ▸ 剩余 X%
+                    let suffix = status.remainingPercent >= 100 ? "" : " ▸ 剩余 \(status.remainingPercent)%"
+                    if self.lastCreditSuffix != suffix {
+                        self.lastCreditSuffix = suffix
+                        self.updateStatusTitle()
+                    }
+                } else {
+                    self.lastCreditText = "GPT 额度: 未获取"
+                    self.creditItem?.title = "GPT 额度: 未获取"
+                    if !self.lastCreditSuffix.isEmpty {
+                        self.lastCreditSuffix = ""
+                        self.updateStatusTitle()
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - 切换动作
