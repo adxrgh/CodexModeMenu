@@ -291,6 +291,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let ref = sender.representedObject as? SessionRef, !ref.id.isEmpty else {
             return
         }
+        // DeepSeek 模式下打开历史 GPT 会话时，先把会话模型来源同步为 DeepSeek，
+        // 让 App 内打开后 composer 直接使用当前模式（不修改 GPT 模式行为）。
+        if currentMode.kind == .deepseek {
+            let sync = CodexThreadModelSync.syncToDeepSeekIfNeeded(
+                threadID: ref.id,
+                targetMode: currentMode.kind
+            )
+            if !sync.success {
+                NSLog("[CodexModeMenu] 会话模型同步失败: %@", sync.message)
+            }
+        }
         openInCodexApp(sessionID: ref.id)
     }
 
