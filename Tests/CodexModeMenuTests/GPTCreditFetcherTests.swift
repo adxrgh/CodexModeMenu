@@ -75,6 +75,27 @@ final class GPTCreditFetcherTests: XCTestCase {
             limitReached: false, resetAt: nil, creditsBalance: nil, fetchedAt: now
         )
         XCTAssertEqual(s4.countdownText, "")
+        // 无重置时间时状态栏后缀只带剩余
+        XCTAssertEqual(s4.countdownSuffix, " ▸ 剩余 50%")
+    }
+
+    func testCountdownSuffix() throws {
+        let now = Date()
+        // 已用尽 + 重置倒计时 2天（用 hasPrefix 避免毫秒级流逝导致的进位抖动）
+        let in2d = now.addingTimeInterval(2 * 86400 + 3 * 3600 + 5 * 60)
+        let s1 = GPTCreditFetcher.CreditStatus(
+            planType: "pro", usedPercent: 100, remainingPercent: 0,
+            limitReached: true, resetAt: in2d, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertTrue(s1.countdownSuffix.hasPrefix(" ▸ 已用尽 · 重置2天"))
+
+        // 剩余 65% + 5小时
+        let in5h = now.addingTimeInterval(5 * 3600 + 23 * 60 + 5 * 60)
+        let s2 = GPTCreditFetcher.CreditStatus(
+            planType: "plus", usedPercent: 35, remainingPercent: 65,
+            limitReached: false, resetAt: in5h, creditsBalance: nil, fetchedAt: now
+        )
+        XCTAssertTrue(s2.countdownSuffix.hasPrefix(" ▸ 剩余 65% · 重置5小时"))
     }
 
     func testParsePartialJSON() {

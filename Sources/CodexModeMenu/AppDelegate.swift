@@ -127,12 +127,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshCreditCountdownIfNeeded()
     }
 
-    /// 有缓存额度时，用当前时间重算重置倒计时并更新菜单项文案。
+    /// 有缓存额度时，用当前时间重算重置倒计时，并同步更新菜单项文案与状态栏标题。
+    /// 跟随 2 秒 tick 调用，倒计时秒级走动且不重复请求接口。
     private func refreshCreditCountdownIfNeeded() {
         guard let status = lastCreditStatus else { return }
         let title = status.summaryText + " · " + status.countdownText
         if creditItem?.title != title {
             creditItem?.title = title
+        }
+        // 状态栏标题附上额度与倒计时：Codex•DS ▸ 剩余 0% · 重置 2天6小时
+        let suffix = status.countdownSuffix
+        if lastCreditSuffix != suffix {
+            lastCreditSuffix = suffix
+            updateStatusTitle()
         }
     }
 
@@ -155,13 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let status {
                     self.lastCreditStatus = status
                     self.lastCreditText = status.summaryText
-                    self.creditItem?.title = status.summaryText + " · " + status.countdownText
-                    // 状态栏标题附上简短额度：Codex•DS ▸ 剩余 X%
-                    let suffix = status.remainingPercent >= 100 ? "" : " ▸ 剩余 \(status.remainingPercent)%"
-                    if self.lastCreditSuffix != suffix {
-                        self.lastCreditSuffix = suffix
-                        self.updateStatusTitle()
-                    }
+                    // 统一由 refreshCreditCountdownIfNeeded 更新菜单项与状态栏标题
+                    self.refreshCreditCountdownIfNeeded()
                 } else {
                     self.lastCreditStatus = nil
                     self.lastCreditText = "GPT 额度: 未获取"

@@ -45,6 +45,32 @@ public struct GPTCreditFetcher {
             }
         }
 
+        /// 状态栏标题后缀（简短版）：剩余 X% · 重置 X天X小时
+        public var countdownSuffix: String {
+            let remain: String
+            if limitReached && remainingPercent <= 0 {
+                remain = "已用尽"
+            } else {
+                remain = "剩余 \(remainingPercent)%"
+            }
+            let cd: String
+            guard let resetAt else {
+                return " ▸ \(remain)"
+            }
+            let seconds = max(0, Int(resetAt.timeIntervalSinceNow))
+            let days = seconds / 86400
+            let hours = (seconds % 86400) / 3600
+            let minutes = max(1, (seconds % 3600) / 60)
+            if days > 0 {
+                cd = "\(days)天\(hours)小时"
+            } else if hours > 0 {
+                cd = "\(hours)小时\(minutes)分"
+            } else {
+                cd = "\(minutes)分钟"
+            }
+            return " ▸ \(remain) · 重置\(cd)"
+        }
+
         public var detailText: String {
             let plan = planType?.uppercased() ?? "GPT"
             var parts = ["\(plan) 额度: 已用 \(usedPercent)% / 剩余 \(remainingPercent)%"]
